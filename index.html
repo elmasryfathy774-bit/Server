@@ -1,0 +1,1171 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<title>IPTV Player</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Samsung Tizen only: loads the AVPlay API. On webOS / desktop it 404s harmlessly. -->
+<script src="$WEBAPIS/webapis/webapis.js"></script>
+<style>
+:root{--bg:#0c1220;--s1:#151d33;--s2:#202b4a;--tx:#eef1f8;--mu:#8e99b8;--ac:#ffb02e;--bad:#ff7b7b}
+*{box-sizing:border-box;margin:0;padding:0}
+/* 1rem = 10px at 1920x1080, scales on 1280x720 panels */
+html{font-size:.5208333vw;background:transparent}
+body{font-family:'Noto Sans Arabic','Noto Sans','Segoe UI',Roboto,Arial,sans-serif;color:var(--tx);font-size:2.4rem;overflow:hidden;background:transparent}
+button{font-family:inherit;color:inherit;border:0;background:none;font-size:inherit}
+input{font-family:inherit;font-size:inherit}
+.screen{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:var(--bg)}
+.screen.active{display:block}
+.scroll{overflow-y:auto;overflow-x:hidden}
+.scroll::-webkit-scrollbar{display:none}
+.f{outline:none;transition:transform .12s,box-shadow .12s,background-color .12s,color .12s}
+.muted{color:var(--mu)}
+
+/* buttons */
+.btn{display:inline-block;padding:1.6rem 3.6rem;border-radius:1.2rem;background:var(--s2);font-weight:600;cursor:pointer;margin:0 .8rem}
+.btn:focus{background:var(--ac);color:#1d1300;transform:scale(1.05)}
+.btn.small{padding:1rem 2.4rem;font-size:2.2rem;margin:.6rem .8rem}
+.btn.sel{box-shadow:inset 0 -.5rem 0 var(--ac)}
+.btn.sel:focus{box-shadow:none}
+
+/* login */
+.lg-wrap{display:flex;height:100%}
+.lg-brand{flex:1;display:flex;flex-direction:column;justify-content:center;padding:0 8rem;background:var(--s1);position:relative;overflow:hidden}
+.lg-brand svg{position:absolute;width:90rem;height:90rem;top:50%;margin-top:-45rem;left:50%;margin-left:-45rem;opacity:.9}
+.lg-brand h1{font-size:8rem;line-height:1.05;font-weight:800;position:relative}
+.lg-brand p{font-size:2.8rem;color:var(--mu);margin-top:2rem;max-width:56rem;line-height:1.5;position:relative}
+.lg-form{width:76rem;flex:none;padding:0 9rem;display:flex;flex-direction:column;justify-content:center}
+.lg-form h2{font-size:4rem;margin-bottom:3rem}
+.lg-form label{display:block;color:var(--mu);font-size:2.1rem;margin:1.8rem 0 .8rem}
+.lg-form input{width:100%;height:7rem;padding:0 2.4rem;border-radius:1.2rem;border:.3rem solid transparent;background:var(--s1);color:var(--tx);outline:none}
+.lg-form input:focus{border-color:var(--ac);background:var(--s2)}
+.lg-actions{margin-top:4rem;display:flex;align-items:center}
+.lg-actions .btn:first-child{margin-left:0;margin-right:.8rem}
+#loginMsg{min-height:3.4rem;margin-top:2rem;color:var(--bad);font-size:2.2rem}
+
+/* home */
+.hm-top{display:flex;justify-content:space-between;align-items:center;padding:4rem 6rem}
+.brand-sm{font-size:3.4rem;font-weight:800}
+.acct{font-size:2.1rem;color:var(--mu);text-align:end;line-height:1.6}
+.acct b{color:var(--tx);font-weight:600}
+.tiles{display:flex;justify-content:center;align-items:center;height:62rem}
+.tile{width:48rem;height:44rem;margin:0 2rem;border-radius:2.4rem;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;font-size:3.8rem;font-weight:700}
+.tile svg{width:15rem;height:15rem;margin-bottom:3rem;stroke:var(--tx);fill:none;stroke-width:5;stroke-linecap:round;stroke-linejoin:round}
+.t-live{background:#1c3a63}.t-vod{background:#4b2b47}.t-ser{background:#27493f}
+.tile:focus{transform:scale(1.07);box-shadow:0 0 0 .6rem var(--ac),0 2rem 5rem rgba(0,0,0,.55)}
+.hm-foot{text-align:center;margin-top:1rem}
+
+/* browse */
+.bw{display:flex;height:100%}
+.side{width:44rem;flex:none;background:var(--s1);display:flex;flex-direction:column;padding:4rem 0 0}
+.side input{margin:0 3rem 2rem;height:6.6rem;padding:0 2.2rem;border-radius:1.2rem;border:.3rem solid transparent;background:var(--bg);color:var(--tx);outline:none;width:calc(100% - 6rem)}
+.side input:focus{border-color:var(--ac)}
+#cats{flex:1;padding:0 2rem 4rem}
+.cat{display:flex;align-items:center;justify-content:space-between;height:6.4rem;padding:0 2rem;margin:.3rem 0;border-radius:1rem;cursor:pointer}
+.cat span:first-child{overflow:hidden;white-space:nowrap;text-overflow:ellipsis;flex:1}
+.cat .n{color:var(--mu);font-size:2rem;margin:0 0 0 1.4rem}
+[dir=rtl] .cat .n{margin:0 1.4rem 0 0}
+.cat.sel{color:var(--ac);font-weight:700}
+.cat:focus{background:var(--s2);color:var(--tx);box-shadow:inset .6rem 0 0 var(--ac)}
+[dir=rtl] .cat:focus{box-shadow:inset -.6rem 0 0 var(--ac)}
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+.mhead{display:flex;align-items:baseline;padding:4rem 5rem 1rem}
+.mhead h2{font-size:4rem}
+.mhead span{color:var(--mu);margin:0 2rem;font-size:2.2rem}
+.grid{flex:1;padding:2rem 3rem 4rem}
+.grid.cards{display:flex;flex-wrap:wrap;align-content:flex-start}
+.card{width:20rem;margin:1.2rem;border-radius:1.2rem;background:var(--s1);overflow:hidden;position:relative;cursor:pointer}
+.card:focus{transform:scale(1.07);box-shadow:0 0 0 .4rem var(--ac),0 1.4rem 3.4rem rgba(0,0,0,.55);z-index:2}
+.poster{width:100%;height:28rem;background:var(--s2);position:relative}
+.poster img{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover}
+.ph{position:absolute;top:0;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;font-size:7rem;font-weight:800;color:var(--mu)}
+.badge{position:absolute;top:.8rem;right:.8rem;background:var(--ac);color:#1d1300;font-size:1.8rem;font-weight:700;padding:.2rem .9rem;border-radius:.8rem;z-index:1}
+.ct{padding:1rem 1.2rem;height:7rem;font-size:2rem;line-height:1.3;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.row{display:flex;align-items:center;height:9rem;margin:.5rem 2rem;padding:0 2rem;border-radius:1.2rem;background:var(--s1);cursor:pointer}
+.row:focus{background:var(--s2);box-shadow:inset .6rem 0 0 var(--ac)}
+[dir=rtl] .row:focus{box-shadow:inset -.6rem 0 0 var(--ac)}
+.logo{width:11rem;height:6.6rem;flex:none;margin:0 2.4rem 0 0;position:relative}
+[dir=rtl] .logo{margin:0 0 0 2.4rem}
+.logo img{width:100%;height:100%;object-fit:contain}
+.logo .ph{font-size:3.6rem}
+.row .nm{flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:2.6rem}
+.row .rt{color:var(--mu);font-size:2.1rem;margin:0 0 0 2rem}
+.empty{padding:6rem;color:var(--mu);font-size:2.6rem;width:100%}
+
+/* detail */
+.dt{display:flex;flex-direction:column;height:100%;padding:5rem 7rem 3rem}
+.dtop{display:flex;height:40rem;flex:none}
+.dposter{width:27rem;height:40rem;flex:none;border-radius:1.4rem;overflow:hidden;background:var(--s2);position:relative}
+.dposter img{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover}
+.dinfo{flex:1;padding:0 5rem;min-width:0}
+.dinfo h1{font-size:5rem;line-height:1.15;max-height:12rem;overflow:hidden}
+.dmeta{color:var(--mu);margin:1.6rem 0;font-size:2.3rem}
+.dmeta span{margin:0 2.4rem 0 0}
+[dir=rtl] .dmeta span{margin:0 0 0 2.4rem}
+.dplot{font-size:2.3rem;line-height:1.55;color:#cfd6ea;max-height:15.5rem;overflow:hidden;margin-bottom:2.4rem}
+.dbtm{flex:1;min-height:0;display:flex;flex-direction:column;margin-top:2rem}
+#dSeasons{max-height:15rem;flex:none;padding:1rem 0}
+#dEps{flex:1;padding:.5rem 0 3rem}
+.row .no{width:9rem;flex:none;color:var(--ac);font-weight:700}
+
+/* player */
+#player{background:#000}
+body.tizen #player{background:transparent}
+body.tizen #vid{display:none}
+#vid{position:absolute;top:0;left:0;width:100%;height:100%;background:#000}
+#avp{position:absolute;top:0;left:0;width:100%;height:100%;display:none}
+body.tizen #avp{display:block}
+.osd{position:absolute;left:0;right:0;bottom:0;padding:12rem 8rem 5rem;background:linear-gradient(to top,rgba(0,0,0,.88),rgba(0,0,0,0));opacity:0;transition:opacity .25s}
+.osd.on{opacity:1}
+#osdTitle{font-size:4.4rem;font-weight:700}
+#osdEpg{font-size:2.5rem;color:#d4dbef;margin-top:1rem;min-height:3.6rem}
+#osdState{display:inline-block;margin:0 2rem;color:var(--ac);font-size:2.6rem}
+.bar{direction:ltr;margin-top:2rem;height:.9rem;border-radius:.5rem;background:rgba(255,255,255,.25);overflow:hidden}
+#osdFill{height:100%;width:0;background:var(--ac)}
+#osdTime{direction:ltr;margin-top:1rem;font-size:2.2rem;color:#d4dbef}
+#buffer{position:absolute;top:50%;left:50%;margin:-4rem 0 0 -4rem;display:none}
+#playErr{position:absolute;top:50%;left:0;right:0;text-align:center;font-size:3.4rem;display:none;margin-top:-2rem}
+
+/* overlays */
+.spin{width:8rem;height:8rem;border:.9rem solid rgba(255,255,255,.2);border-top-color:var(--ac);border-radius:50%;animation:sp 1s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+#loader{position:fixed;top:0;left:0;right:0;bottom:0;z-index:50;display:none;align-items:center;justify-content:center;background:rgba(12,18,32,.75)}
+#loader.on{display:flex}
+#toast{position:fixed;bottom:7rem;left:50%;transform:translateX(-50%);z-index:60;display:none;padding:1.8rem 3.6rem;background:var(--s2);border-radius:1.2rem;max-width:120rem;box-shadow:0 1rem 3rem rgba(0,0,0,.5)}
+@media (prefers-reduced-motion:reduce){.f{transition:none}.spin{animation-duration:3s}}
+</style>
+</head>
+<body>
+
+<!-- ============ LOGIN ============ -->
+<section id="login" class="screen active">
+  <div class="lg-wrap">
+    <div class="lg-brand">
+      <svg viewBox="0 0 900 900" fill="none" stroke-width="3" aria-hidden="true">
+        <circle cx="450" cy="450" r="140" stroke="#202b4a"/>
+        <circle cx="450" cy="450" r="240" stroke="#202b4a"/>
+        <circle cx="450" cy="450" r="340" stroke="#202b4a"/>
+        <circle cx="450" cy="450" r="430" stroke="#202b4a"/>
+        <path d="M450 110 A340 340 0 0 1 790 450" stroke="#ffb02e" stroke-width="8" stroke-linecap="round"/>
+      </svg>
+      <h1>IPTV<br>Player</h1>
+      <p data-i18n="tagline"></p>
+    </div>
+    <div class="lg-form">
+      <h2 data-i18n="login_title"></h2>
+      <label for="inName" data-i18n="f_name"></label>
+      <input id="inName" class="f" type="text" autocomplete="off" autocapitalize="off">
+      <label for="inUser" data-i18n="f_user"></label>
+      <input id="inUser" class="f" type="text" autocomplete="off" autocapitalize="off">
+      <label for="inPass" data-i18n="f_pass"></label>
+      <input id="inPass" class="f" type="password" autocomplete="off">
+      <label for="inHost" data-i18n="f_host"></label>
+      <input id="inHost" class="f" type="text" placeholder="http://example.com:8080" autocomplete="off" autocapitalize="off">
+      <div class="lg-actions">
+        <button id="btnLogin" class="btn f" data-i18n="btn_login"></button>
+        <button id="btnLang" class="btn f"></button>
+      </div>
+      <div id="loginMsg"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ HOME ============ -->
+<section id="home" class="screen">
+  <header class="hm-top">
+    <div class="brand-sm">IPTV Player</div>
+    <div class="acct" id="acct"></div>
+  </header>
+  <div class="tiles" id="tiles">
+    <div class="tile t-live f" tabindex="-1" data-go="live" data-default>
+      <svg viewBox="0 0 64 64"><rect x="8" y="20" width="48" height="32" rx="5"/><path d="M22 8l10 12 10-12"/></svg>
+      <span data-i18n="live"></span>
+    </div>
+    <div class="tile t-vod f" tabindex="-1" data-go="vod">
+      <svg viewBox="0 0 64 64"><rect x="8" y="14" width="48" height="36" rx="5"/><path d="M8 26h48M20 14l-6 12M34 14l-6 12M48 14l-6 12"/><path d="M27 34l12 7-12 7z"/></svg>
+      <span data-i18n="movies"></span>
+    </div>
+    <div class="tile t-ser f" tabindex="-1" data-go="series">
+      <svg viewBox="0 0 64 64"><rect x="14" y="22" width="42" height="30" rx="4"/><path d="M20 14h36M26 8h24"/><path d="M30 31l10 6-10 6z"/></svg>
+      <span data-i18n="series"></span>
+    </div>
+  </div>
+  <div class="hm-foot">
+    <button id="btnReload" class="btn f" data-i18n="reload"></button>
+    <button id="btnLogout" class="btn f" data-i18n="logout"></button>
+  </div>
+</section>
+
+<!-- ============ BROWSE (live / movies / series) ============ -->
+<section id="browse" class="screen">
+  <div class="bw">
+    <div class="side">
+      <input id="inSearch" class="f" type="text" autocomplete="off" autocapitalize="off">
+      <div id="cats" class="scroll"></div>
+    </div>
+    <div class="main">
+      <div class="mhead"><h2 id="bTitle"></h2><span id="bCount"></span></div>
+      <div id="grid" class="grid scroll cards"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ DETAIL (movie / series) ============ -->
+<section id="detail" class="screen">
+  <div class="dt">
+    <div class="dtop">
+      <div class="dposter"><div class="ph" id="dPh"></div><img id="dPoster" alt=""></div>
+      <div class="dinfo">
+        <h1 id="dTitle"></h1>
+        <div class="dmeta" id="dMeta"></div>
+        <div class="dplot" id="dPlot"></div>
+        <button id="dPlay" class="btn f" data-default data-i18n="play"></button>
+      </div>
+    </div>
+    <div class="dbtm" id="dBtm">
+      <div id="dSeasons" class="scroll"></div>
+      <div id="dEps" class="scroll"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PLAYER ============ -->
+<section id="player" class="screen">
+  <video id="vid" autoplay></video>
+  <object id="avp" type="application/avplayer"></object>
+  <div id="buffer" class="spin"></div>
+  <div id="playErr"></div>
+  <div id="osd" class="osd">
+    <div><span id="osdTitle"></span><span id="osdState"></span></div>
+    <div id="osdEpg"></div>
+    <div class="bar" id="osdBar"><div id="osdFill"></div></div>
+    <div id="osdTime"></div>
+  </div>
+</section>
+
+<div id="loader"><div class="spin"></div></div>
+<div id="toast"></div>
+
+<script>
+(function () {
+'use strict';
+
+/* =====================================================================
+   Config
+   ===================================================================== */
+var CACHE_TTL   = 30 * 60 * 1000;  // cache lifetime for lists (30 min)
+var PAGE_GRID   = 40;              // posters rendered per chunk
+var PAGE_ROWS   = 60;              // channels rendered per chunk
+var API_TIMEOUT = 60000;           // ms; big lists can be slow
+var SEEK_STEP   = 10;              // seconds for Left/Right in VOD
+
+/* =====================================================================
+   Helpers (ES5 style so it also runs on older webOS / Tizen engines)
+   ===================================================================== */
+function $(s, r) { return (r || document).querySelector(s); }
+function $$(s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); }
+function h(tag, cls, txt) {
+  var e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (txt != null) e.textContent = txt;
+  return e;
+}
+function closest(el, cls) {
+  while (el && el !== document) {
+    if (el.classList && el.classList.contains(cls)) return el;
+    el = el.parentNode;
+  }
+  return null;
+}
+function noop() {}
+function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+function lsDel(k) { try { localStorage.removeItem(k); } catch (e) {} }
+function b64(s) { try { return decodeURIComponent(escape(atob(s))); } catch (e) { return ''; } }
+function fmtTime(sec) {
+  sec = Math.max(0, Math.floor(sec || 0));
+  var hh = Math.floor(sec / 3600), mm = Math.floor((sec % 3600) / 60), ss = sec % 60;
+  return (hh ? hh + ':' + (mm < 10 ? '0' : '') : '') + mm + ':' + (ss < 10 ? '0' : '') + ss;
+}
+
+var IS_TIZEN = (typeof window.tizen !== 'undefined') && (typeof window.webapis !== 'undefined') && !!window.webapis.avplay;
+if (IS_TIZEN) document.body.classList.add('tizen');
+
+/* =====================================================================
+   i18n  (Arabic / English)
+   ===================================================================== */
+var I18N = {
+  en: {
+    tagline: 'Live TV, movies and series from your own provider.',
+    login_title: 'Sign in', f_name: 'Any name', f_user: 'Username', f_pass: 'Password',
+    f_host: 'Server URL (host:port)', btn_login: 'Login',
+    live: 'Live TV', movies: 'Movies', series: 'Series',
+    logout: 'Log out', reload: 'Reload data', reloaded: 'Cached data cleared. It will reload next time.',
+    search: 'Search', all: 'All', play: 'Play', season: 'Season', episode: 'Episode',
+    err_auth: 'Wrong username or password.', err_inactive: 'This account is not active.',
+    err_net: 'Cannot reach the server. Check the URL and your network.',
+    err_fill: 'Enter username, password and server URL.',
+    err_play: "This stream can't be played. Press Back to return.",
+    err_load: 'Could not load this section. Try again.',
+    empty: 'Nothing here.', status: 'Status', expires: 'Expires', connections: 'Connections',
+    unlimited: 'Unlimited', now: 'Now', next: 'Next', paused: 'Paused', other_lang: 'العربية'
+  },
+  ar: {
+    tagline: 'القنوات والأفلام والمسلسلات من مزوّد الخدمة الخاص بك.',
+    login_title: 'تسجيل الدخول', f_name: 'اسم الحساب (أي اسم)', f_user: 'اسم المستخدم', f_pass: 'كلمة المرور',
+    f_host: 'رابط السيرفر (Host:Port)', btn_login: 'دخول',
+    live: 'البث المباشر', movies: 'الأفلام', series: 'المسلسلات',
+    logout: 'تسجيل الخروج', reload: 'تحديث البيانات', reloaded: 'تم مسح البيانات المؤقتة وسيُعاد تحميلها.',
+    search: 'بحث', all: 'الكل', play: 'تشغيل', season: 'الموسم', episode: 'الحلقة',
+    err_auth: 'اسم المستخدم أو كلمة المرور غير صحيحة.', err_inactive: 'هذا الحساب غير مفعّل.',
+    err_net: 'تعذّر الاتصال بالسيرفر. تحقّق من الرابط والشبكة.',
+    err_fill: 'أدخل اسم المستخدم وكلمة المرور ورابط السيرفر.',
+    err_play: 'تعذّر تشغيل هذا البث. اضغط رجوع للعودة.',
+    err_load: 'تعذّر تحميل هذا القسم. حاول مرة أخرى.',
+    empty: 'لا يوجد محتوى.', status: 'الحالة', expires: 'ينتهي في', connections: 'الاتصالات',
+    unlimited: 'غير محدود', now: 'الآن', next: 'التالي', paused: 'متوقف مؤقتاً', other_lang: 'English'
+  }
+};
+var lang = lsGet('iptv.lang') || 'en';
+function t(k) { return (I18N[lang] && I18N[lang][k]) || I18N.en[k] || k; }
+function applyLang() {
+  document.documentElement.lang = lang;
+  document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
+  $$('[data-i18n]').forEach(function (el) { el.textContent = t(el.getAttribute('data-i18n')); });
+  $('#inSearch').placeholder = t('search');
+  $('#btnLang').textContent = t('other_lang');
+  if (S) renderAccount();
+}
+
+/* =====================================================================
+   Cache (IndexedDB, falls back to memory). Big lists don't fit localStorage.
+   ===================================================================== */
+var DB = (function () {
+  var db = null, mem = {};
+  var ready = new Promise(function (res) {
+    try {
+      var rq = indexedDB.open('iptv-cache', 1);
+      rq.onupgradeneeded = function () { rq.result.createObjectStore('kv'); };
+      rq.onsuccess = function () { db = rq.result; res(); };
+      rq.onerror = function () { res(); };
+    } catch (e) { res(); }
+  });
+  return {
+    get: function (k) {
+      return ready.then(function () {
+        return new Promise(function (res) {
+          if (!db) { res(mem[k] || null); return; }
+          try {
+            var r = db.transaction('kv', 'readonly').objectStore('kv').get(k);
+            r.onsuccess = function () { res(r.result || null); };
+            r.onerror = function () { res(null); };
+          } catch (e) { res(null); }
+        });
+      });
+    },
+    set: function (k, v) {
+      return ready.then(function () {
+        return new Promise(function (res) {
+          if (!db) { mem[k] = v; res(); return; }
+          try {
+            var tx = db.transaction('kv', 'readwrite');
+            tx.objectStore('kv').put(v, k);
+            tx.oncomplete = function () { res(); };
+            tx.onerror = function () { res(); };
+          } catch (e) { res(); }
+        });
+      });
+    },
+    clear: function () {
+      return ready.then(function () {
+        mem = {};
+        return new Promise(function (res) {
+          if (!db) { res(); return; }
+          try {
+            var tx = db.transaction('kv', 'readwrite');
+            tx.objectStore('kv').clear();
+            tx.oncomplete = function () { res(); };
+            tx.onerror = function () { res(); };
+          } catch (e) { res(); }
+        });
+      });
+    }
+  };
+})();
+
+/* =====================================================================
+   Xtream Codes API
+   ===================================================================== */
+var S = null; // session {name, host, user, pass, key, info}
+
+function normHost(v) {
+  v = (v || '').trim();
+  if (!v) return '';
+  if (!/^https?:\/\//i.test(v)) v = 'http://' + v;
+  return v.replace(/\/player_api\.php.*$/i, '').replace(/\/+$/, '');
+}
+
+// GET {host}/player_api.php?username=..&password=..[&action=..]
+function api(params) {
+  return new Promise(function (resolve, reject) {
+    var q = 'username=' + encodeURIComponent(S.user) + '&password=' + encodeURIComponent(S.pass);
+    for (var k in params) { if (params.hasOwnProperty(k)) q += '&' + k + '=' + encodeURIComponent(params[k]); }
+    var x = new XMLHttpRequest();
+    x.open('GET', S.host + '/player_api.php?' + q, true);
+    x.timeout = API_TIMEOUT;
+    x.onload = function () {
+      if (x.status >= 200 && x.status < 300) {
+        try { resolve(JSON.parse(x.responseText)); } catch (e) { reject('parse'); }
+      } else { reject('http' + x.status); }
+    };
+    x.onerror = function () { reject('net'); };
+    x.ontimeout = function () { reject('net'); };
+    x.send();
+  });
+}
+
+// Cache-first wrapper: fresh cache -> use it; else fetch; if fetch fails -> stale cache.
+function cached(params, map) {
+  var key = S.key + '|' + JSON.stringify(params);
+  return DB.get(key).then(function (hit) {
+    if (hit && (Date.now() - hit.t) < CACHE_TTL) return hit.d;
+    return api(params).then(function (raw) {
+      var d = map ? map(raw) : raw;
+      DB.set(key, { t: Date.now(), d: d });
+      return d;
+    }, function (err) {
+      if (hit) return hit.d;
+      throw err;
+    });
+  });
+}
+
+/* Compact the JSON so thousands of items stay light on TV memory */
+function mapCats(raw) {
+  var out = [];
+  if (!Array.isArray(raw)) return out;
+  for (var i = 0; i < raw.length; i++) out.push({ id: String(raw[i].category_id), n: raw[i].category_name || '' });
+  return out;
+}
+function mapLive(raw) {
+  var out = [];
+  if (!Array.isArray(raw)) return out;
+  for (var i = 0; i < raw.length; i++) {
+    var s = raw[i];
+    out.push({ id: String(s.stream_id), n: s.name || '', i: s.stream_icon || '', c: String(s.category_id) });
+  }
+  return out;
+}
+function mapVod(raw) {
+  var out = [];
+  if (!Array.isArray(raw)) return out;
+  for (var i = 0; i < raw.length; i++) {
+    var s = raw[i];
+    out.push({ id: String(s.stream_id), n: s.name || '', i: s.stream_icon || '', c: String(s.category_id), r: s.rating, x: s.container_extension });
+  }
+  return out;
+}
+function mapSeries(raw) {
+  var out = [];
+  if (!Array.isArray(raw)) return out;
+  for (var i = 0; i < raw.length; i++) {
+    var s = raw[i];
+    out.push({ id: String(s.series_id), n: s.name || '', i: s.cover || '', c: String(s.category_id), r: s.rating });
+  }
+  return out;
+}
+function mapVodInfo(raw) {
+  var inf = (raw && raw.info) || {}, md = (raw && raw.movie_data) || {};
+  return {
+    plot: inf.plot || inf.description || '', genre: inf.genre || '', dur: inf.duration || '',
+    year: String(inf.releasedate || inf.release_date || '').substr(0, 4), rating: inf.rating,
+    x: md.container_extension, img: inf.movie_image || ''
+  };
+}
+function mapSeriesInfo(raw) {
+  var inf = (raw && raw.info) || {}, all = [];
+  (function walk(v) {
+    if (!v) return;
+    if (Array.isArray(v)) { v.forEach(walk); return; }
+    if (typeof v === 'object') {
+      if (v.id !== undefined && (v.container_extension !== undefined || v.episode_num !== undefined)) { all.push(v); return; }
+      for (var k in v) { if (v.hasOwnProperty(k)) walk(v[k]); }
+    }
+  })(raw && raw.episodes);
+  var seasons = {};
+  all.forEach(function (e) {
+    var sn = String(e.season != null ? e.season : 1);
+    (seasons[sn] = seasons[sn] || []).push({
+      id: String(e.id), num: parseInt(e.episode_num, 10) || 0, x: e.container_extension || 'mp4',
+      n: e.title || ('E' + e.episode_num), d: (e.info && e.info.duration) || ''
+    });
+  });
+  for (var s in seasons) { seasons[s].sort(function (a, b) { return a.num - b.num; }); }
+  return {
+    plot: inf.plot || '', genre: inf.genre || '', year: String(inf.releaseDate || inf.release_date || '').substr(0, 4),
+    rating: inf.rating, img: inf.cover || '', seasons: seasons
+  };
+}
+
+/* =====================================================================
+   Loader / toast / screens
+   ===================================================================== */
+var CANCEL = {}, token = 0, busy = false, toastTimer = null;
+
+function load(promise) {
+  var tok = ++token;
+  busy = true;
+  $('#loader').classList.add('on');
+  function done() { busy = false; $('#loader').classList.remove('on'); }
+  return promise.then(function (v) {
+    if (tok !== token) throw CANCEL;
+    done(); return v;
+  }, function (e) {
+    if (tok !== token) throw CANCEL;
+    done(); throw e;
+  });
+}
+function cancelLoad() { token++; busy = false; $('#loader').classList.remove('on'); }
+function toast(msg) {
+  var el = $('#toast');
+  el.textContent = msg; el.style.display = 'block';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function () { el.style.display = 'none'; }, 3500);
+}
+
+var stack = [], cur = null, lastFocus = {};
+
+function focusEl(el, noScroll) {
+  if (!el) return;
+  try { el.focus(); } catch (e) {}
+  if (!noScroll) ensureVisible(el);
+}
+function show(name) {
+  if (cur && cur !== name) {
+    var ae = document.activeElement;
+    if (ae && $('#' + cur).contains(ae)) lastFocus[cur] = ae;
+  }
+  $$('.screen').forEach(function (s) { s.classList.remove('active'); });
+  $('#' + name).classList.add('active');
+  cur = name;
+  document.body.setAttribute('data-screen', name);
+  var tgt = lastFocus[name];
+  if (!tgt || !document.body.contains(tgt) || tgt.offsetParent === null) {
+    tgt = $('#' + name + ' [data-default]') || $('#' + name + ' .f');
+  }
+  focusEl(tgt);
+}
+function push(name) { stack.push(name); show(name); }
+function pop() { stack.pop(); show(stack[stack.length - 1]); }
+function resetTo(name) { stack = [name]; show(name); }
+
+function exitApp() {
+  try { if (IS_TIZEN) { tizen.application.getCurrentApplication().exit(); return; } } catch (e) {}
+  try { if (window.webOS && webOS.platformBack) { webOS.platformBack(); return; } } catch (e) {}
+  try { window.close(); } catch (e) {}
+}
+
+/* =====================================================================
+   Spatial navigation (D-pad). Geometric: picks the nearest focusable
+   in the pressed direction, so it works for sidebar, grids and lists.
+   ===================================================================== */
+function ensureVisible(el) {
+  var sc = el.parentNode;
+  while (sc && sc !== document.body && !(sc.classList && sc.classList.contains('scroll'))) sc = sc.parentNode;
+  if (!sc || sc === document.body) return;
+  var cr = sc.getBoundingClientRect(), r = el.getBoundingClientRect();
+  var m = Math.min(r.height * 0.8, cr.height / 4);
+  if (r.top < cr.top + m) sc.scrollTop -= (cr.top + m - r.top);
+  else if (r.bottom > cr.bottom - m) sc.scrollTop += (r.bottom - (cr.bottom - m));
+}
+
+function move(dir) {
+  var curEl = document.activeElement;
+  var scope = $('.screen.active');
+  if (!curEl || !curEl.classList || !curEl.classList.contains('f') || !scope.contains(curEl)) {
+    focusEl($('.screen.active [data-default]') || $('.screen.active .f'));
+    return;
+  }
+  var rc = curEl.getBoundingClientRect();
+  var cx = rc.left + rc.width / 2, cy = rc.top + rc.height / 2;
+  var list = scope.querySelectorAll('.f'), best = null, bestScore = Infinity;
+  for (var i = 0; i < list.length; i++) {
+    var el = list[i];
+    if (el === curEl) continue;
+    var r = el.getBoundingClientRect();
+    if (!r.width || !r.height) continue;
+    var dx = r.left + r.width / 2 - cx, dy = r.top + r.height / 2 - cy, p, s;
+    if (dir === 'right')      { if (dx <= 4)  continue; p = dx;  s = Math.abs(dy) * 4; }
+    else if (dir === 'left')  { if (dx >= -4) continue; p = -dx; s = Math.abs(dy) * 4; }
+    else if (dir === 'down')  { if (dy <= 4)  continue; p = dy;  s = Math.abs(dx) * 3; }
+    else                      { if (dy >= -4) continue; p = -dy; s = Math.abs(dx) * 3; }
+    var score = p + s;
+    if (score < bestScore) { bestScore = score; best = el; }
+  }
+  if (best) focusEl(best);
+}
+
+/* =====================================================================
+   Keys
+   ===================================================================== */
+var K = { LEFT: 37, UP: 38, RIGHT: 39, DOWN: 40, ENTER: 13, ESC: 27, BACKSPACE: 8,
+          BACK_WEBOS: 461, BACK_TIZEN: 10009,
+          PLAY: 415, PAUSE: 19, STOP: 413, FF: 417, RW: 412, PLAYPAUSE: 10252,
+          CH_UP_TIZEN: 427, CH_DN_TIZEN: 428, CH_UP_WEBOS: 33, CH_DN_WEBOS: 34 };
+
+if (IS_TIZEN) {
+  try {
+    ['MediaPlay', 'MediaPause', 'MediaStop', 'MediaFastForward', 'MediaRewind', 'MediaPlayPause', 'ChannelUp', 'ChannelDown']
+      .forEach(function (n) { tizen.tvinputdevice.registerKey(n); });
+  } catch (e) {}
+}
+
+function isBack(k) { return k === K.BACK_WEBOS || k === K.BACK_TIZEN || k === K.ESC; }
+
+function back() {
+  if (cur === 'player') return Player.exit();
+  if (cur === 'browse' || cur === 'detail') return pop();
+  exitApp();
+}
+
+document.addEventListener('keydown', function (e) {
+  var k = e.keyCode, tg = e.target, isInput = tg && tg.tagName === 'INPUT';
+
+  if (busy) {                         // while loading: only Back (cancel)
+    if (isBack(k)) { e.preventDefault(); cancelLoad(); }
+    return;
+  }
+  if (cur === 'player') { Player.key(k, e); return; }
+
+  if (isBack(k)) { e.preventDefault(); back(); return; }
+  if (k === K.BACKSPACE && !isInput) { e.preventDefault(); back(); return; }
+
+  var dir = k === K.LEFT ? 'left' : k === K.RIGHT ? 'right' : k === K.UP ? 'up' : k === K.DOWN ? 'down' : null;
+  if (dir) {
+    if (isInput && (dir === 'left' || dir === 'right') && tg.value) {
+      // let the caret move inside text; leave the field only at its edges
+      var atStart = tg.selectionStart === 0, atEnd = tg.selectionEnd === tg.value.length;
+      var rtl = document.documentElement.dir === 'rtl';
+      var leavingStart = (dir === 'left') !== rtl;
+      if (leavingStart ? !atStart : !atEnd) return;
+    }
+    e.preventDefault();
+    move(dir);
+    return;
+  }
+  if (k === K.ENTER) {
+    if (isInput) return;              // native: opens the on-screen keyboard
+    var f = closest(tg, 'f');
+    if (f) { e.preventDefault(); f.click(); }
+  }
+}, true);
+
+// LG Magic Remote / mouse support: hover moves focus, click activates.
+var lastMouse = { x: -1, y: -1 };
+document.addEventListener('mousemove', function (e) {
+  if (e.screenX === lastMouse.x && e.screenY === lastMouse.y) return;
+  lastMouse.x = e.screenX; lastMouse.y = e.screenY;
+  if (busy || cur === 'player') return;
+  var f = closest(e.target, 'f');
+  if (f && f !== document.activeElement && f.tagName !== 'INPUT') focusEl(f, true);
+});
+
+// Lazy loading trigger: when focus gets close to the end of what is rendered, render the next chunk.
+document.addEventListener('focusin', function (e) {
+  if (cur !== 'browse') return;
+  var c = closest(e.target, 'card') || closest(e.target, 'row');
+  if (c && c.getAttribute('data-idx') != null && +c.getAttribute('data-idx') >= B.shown - 10) renderMore();
+});
+
+/* =====================================================================
+   Login
+   ===================================================================== */
+function setMsg(m) { $('#loginMsg').textContent = m || ''; }
+
+function doLogin() {
+  var name = $('#inName').value.trim(), user = $('#inUser').value.trim(),
+      pass = $('#inPass').value, host = normHost($('#inHost').value);
+  if (!user || !pass || !host) { setMsg(t('err_fill')); return; }
+  setMsg('');
+  S = { name: name || user, host: host, user: user, pass: pass, key: host + '|' + user };
+  load(api({})).then(function (d) {
+    var ui = d && d.user_info;
+    if (!ui || String(ui.auth) !== '1') throw 'auth';
+    if (ui.status && ui.status !== 'Active') throw 'inactive';
+    S.info = d;
+    lsSet('iptv.account', JSON.stringify({ name: S.name, host: host, user: user, pass: pass, auto: 1 }));
+    renderAccount();
+    resetTo('home');
+  }).catch(function (e) {
+    if (e === CANCEL) return;
+    S = null;
+    setMsg(e === 'auth' ? t('err_auth') : e === 'inactive' ? t('err_inactive') : t('err_net'));
+  });
+}
+
+function logout() {
+  var a = null;
+  try { a = JSON.parse(lsGet('iptv.account')); } catch (e) {}
+  if (a) { a.pass = ''; a.auto = 0; lsSet('iptv.account', JSON.stringify(a)); $('#inPass').value = ''; }
+  S = null;
+  resetTo('login');
+}
+
+function renderAccount() {
+  var ui = (S.info && S.info.user_info) || {}, el = $('#acct');
+  el.innerHTML = '';
+  var exp = ui.exp_date ? new Date(parseInt(ui.exp_date, 10) * 1000).toLocaleDateString() : t('unlimited');
+  var maxc = ui.max_connections ? ui.max_connections : '-';
+  var l1 = h('div'); l1.appendChild(h('b', null, S.name));
+  var l2 = h('div', null, t('status') + ': ' + (ui.status || '-') + '   ' + t('expires') + ': ' + exp +
+                          '   ' + t('connections') + ': ' + (ui.active_cons || 0) + '/' + maxc);
+  el.appendChild(l1); el.appendChild(l2);
+}
+
+/* =====================================================================
+   Browse: categories + lazy-rendered grid / list
+   ===================================================================== */
+var B = { mode: null, cats: [], items: [], view: [], catId: 'all', q: '', shown: 0 };
+var SOURCES = {
+  live:   { cats: 'get_live_categories',   items: 'get_live_streams',   map: mapLive,   title: 'live' },
+  vod:    { cats: 'get_vod_categories',    items: 'get_vod_streams',    map: mapVod,    title: 'movies' },
+  series: { cats: 'get_series_categories', items: 'get_series',         map: mapSeries, title: 'series' }
+};
+
+var Lazy = (function () {
+  var io = null;
+  function loadImg(im) {
+    im.onerror = function () { im.style.display = 'none'; };
+    im.src = im.getAttribute('data-src');
+  }
+  return {
+    reset: function (root) {
+      if (io) io.disconnect();
+      io = null;
+      if ('IntersectionObserver' in window) {
+        io = new IntersectionObserver(function (entries) {
+          entries.forEach(function (en) {
+            if (en.isIntersecting) { io.unobserve(en.target); loadImg(en.target); }
+          });
+        }, { root: root, rootMargin: '900px 0px' });
+      }
+    },
+    watch: function (im) { if (io) io.observe(im); else loadImg(im); }
+  };
+})();
+
+function initialOf(name) {
+  var s = (name || '').replace(/^[^A-Za-z0-9\u0600-\u06FF]+/, '');
+  return (s.charAt(0) || '?').toUpperCase();
+}
+
+function openBrowse(mode) {
+  var src = SOURCES[mode];
+  load(Promise.all([cached({ action: src.cats }, mapCats), cached({ action: src.items }, src.map)]))
+    .then(function (r) {
+      B.mode = mode; B.cats = r[0]; B.items = r[1]; B.catId = 'all'; B.q = '';
+      $('#inSearch').value = '';
+      $('#bTitle').textContent = t(src.title);
+      buildCats();
+      renderGrid();
+      push('browse');
+      focusEl($('#grid .f') || $('#cats .f'));
+    })
+    .catch(function (e) { if (e !== CANCEL) toast(t('err_load')); });
+}
+
+function buildCats() {
+  var box = $('#cats'), counts = {}, i;
+  box.innerHTML = '';
+  for (i = 0; i < B.items.length; i++) counts[B.items[i].c] = (counts[B.items[i].c] || 0) + 1;
+  function add(id, name, n) {
+    var d = h('div', 'cat f' + (id === B.catId ? ' sel' : ''));
+    d.tabIndex = -1; d.setAttribute('data-id', id);
+    d.appendChild(h('span', null, name));
+    d.appendChild(h('span', 'n', String(n)));
+    box.appendChild(d);
+  }
+  add('all', t('all'), B.items.length);
+  for (i = 0; i < B.cats.length; i++) {
+    var c = B.cats[i];
+    if (counts[c.id]) add(c.id, c.n, counts[c.id]);
+  }
+}
+
+function renderGrid() {
+  var q = B.q.toLowerCase(), out = [], i, it, grid = $('#grid');
+  for (i = 0; i < B.items.length; i++) {
+    it = B.items[i];
+    if (B.catId !== 'all' && it.c !== B.catId) continue;
+    if (q && it.n.toLowerCase().indexOf(q) < 0) continue;
+    out.push(it);
+  }
+  B.view = out; B.shown = 0;
+  grid.innerHTML = '';
+  grid.scrollTop = 0;
+  grid.className = 'grid scroll ' + (B.mode === 'live' ? 'list' : 'cards');
+  Lazy.reset(grid);
+  $('#bCount').textContent = out.length ? String(out.length) : '';
+  if (!out.length) { grid.appendChild(h('div', 'empty', t('empty'))); return; }
+  renderMore();
+}
+
+function renderMore() {
+  if (B.shown >= B.view.length) return;
+  var n = B.mode === 'live' ? PAGE_ROWS : PAGE_GRID;
+  var end = Math.min(B.shown + n, B.view.length), frag = document.createDocumentFragment();
+  for (var i = B.shown; i < end; i++) frag.appendChild(B.mode === 'live' ? mkRow(B.view[i], i) : mkCard(B.view[i], i));
+  B.shown = end;
+  $('#grid').appendChild(frag);
+}
+
+function mkImg(url, box) {
+  if (!url) return;
+  var im = document.createElement('img');
+  im.alt = ''; im.setAttribute('data-src', url);
+  box.appendChild(im);
+  Lazy.watch(im);
+}
+function mkCard(it, i) {
+  var d = h('div', 'card f'); d.tabIndex = -1; d.setAttribute('data-idx', i);
+  var p = h('div', 'poster');
+  p.appendChild(h('div', 'ph', initialOf(it.n)));
+  mkImg(it.i, p);
+  var r = parseFloat(it.r);
+  if (r > 0) p.appendChild(h('div', 'badge', r.toFixed(1)));
+  d.appendChild(p);
+  d.appendChild(h('div', 'ct', it.n));
+  return d;
+}
+function mkRow(it, i) {
+  var d = h('div', 'row f'); d.tabIndex = -1; d.setAttribute('data-idx', i);
+  var lg = h('div', 'logo');
+  lg.appendChild(h('div', 'ph', initialOf(it.n)));
+  mkImg(it.i, lg);
+  d.appendChild(lg);
+  d.appendChild(h('div', 'nm', it.n));
+  return d;
+}
+
+/* =====================================================================
+   Detail: movie info / series seasons + episodes
+   ===================================================================== */
+var D = { kind: null, item: null, info: null, season: null };
+
+function openDetail(kind, item) {
+  D = { kind: kind, item: item, info: null, season: null };
+  var p = kind === 'vod' ? cached({ action: 'get_vod_info', vod_id: item.id }, mapVodInfo)
+                         : cached({ action: 'get_series_info', series_id: item.id }, mapSeriesInfo);
+  load(p).then(function (info) { D.info = info; showDetail(); },
+    function (e) {
+      if (e === CANCEL) throw e;
+      if (kind === 'vod') { D.info = {}; showDetail(); return; }   // movie can still play without info
+      throw e;
+    })
+    .catch(function (e) { if (e !== CANCEL) toast(t('err_load')); });
+}
+
+function showDetail() {
+  var it = D.item, info = D.info || {}, isSeries = D.kind === 'series';
+  if (D.kind === 'vod' && info.x) it.x = info.x;
+  $('#dTitle').textContent = it.n;
+  $('#dPh').textContent = initialOf(it.n);
+  var im = $('#dPoster'), url = it.i || info.img;
+  im.style.display = 'none'; im.onload = function () { im.style.display = 'block'; };
+  im.onerror = function () { im.style.display = 'none'; };
+  im.removeAttribute('src');
+  if (url) im.src = url;
+
+  var m = $('#dMeta'); m.innerHTML = '';
+  var r = parseFloat(info.rating || it.r);
+  [info.year, r > 0 ? '\u2605 ' + r.toFixed(1) : '', info.genre, info.dur].forEach(function (v) {
+    if (v) m.appendChild(h('span', null, v));
+  });
+  $('#dPlot').textContent = info.plot || '';
+  $('#dPlay').style.display = isSeries ? 'none' : 'inline-block';
+  $('#dBtm').style.display = isSeries ? 'flex' : 'none';
+
+  if (isSeries) {
+    var keys = Object.keys(info.seasons || {}).sort(function (a, b) { return (+a) - (+b); });
+    var sb = $('#dSeasons'); sb.innerHTML = '';
+    keys.forEach(function (k, idx) {
+      var b = h('button', 'btn small f' + (idx === 0 ? ' sel' : ''), t('season') + ' ' + k);
+      b.setAttribute('data-season', k);
+      sb.appendChild(b);
+    });
+    if (keys.length) renderEpisodes(keys[0]); else { $('#dEps').innerHTML = ''; $('#dEps').appendChild(h('div', 'empty', t('empty'))); }
+  }
+  push('detail');
+  if (isSeries) focusEl($('#dEps .f') || $('#dSeasons .f'));
+  else focusEl($('#dPlay'));
+}
+
+function renderEpisodes(season) {
+  D.season = season;
+  var eps = D.info.seasons[season] || [], box = $('#dEps');
+  box.innerHTML = ''; box.scrollTop = 0;
+  eps.forEach(function (e, i) {
+    var r = h('div', 'row f'); r.tabIndex = -1; r.setAttribute('data-ep', i);
+    r.appendChild(h('div', 'no', 'E' + (e.num || i + 1)));
+    r.appendChild(h('div', 'nm', e.n));
+    if (e.d) r.appendChild(h('div', 'rt', e.d));
+    box.appendChild(r);
+  });
+  $$('#dSeasons .btn').forEach(function (b) { b.classList.toggle('sel', b.getAttribute('data-season') === season); });
+}
+
+/* =====================================================================
+   Player: AVPlay on Samsung Tizen, HTML5 <video> on LG webOS
+   ===================================================================== */
+var Player = (function () {
+  var vid = $('#vid'), osd = $('#osd'), osdTimer = null;
+  var ctx = null;   // {kind, list, idx, urls, u}
+  var dur = 0, paused = false, failed = false;
+
+  function urlsFor(kind, it) {
+    var cred = '/' + encodeURIComponent(S.user) + '/' + encodeURIComponent(S.pass) + '/';
+    if (kind === 'live') return [S.host + '/live' + cred + it.id + '.m3u8', S.host + '/live' + cred + it.id + '.ts'];
+    if (kind === 'vod')  return [S.host + '/movie' + cred + it.id + '.' + (it.x || 'mp4')];
+    return [S.host + '/series' + cred + it.id + '.' + (it.x || 'mp4')];
+  }
+
+  function buffer(on) { $('#buffer').style.display = on ? 'block' : 'none'; }
+  function showErr(on) { var e = $('#playErr'); e.textContent = on ? t('err_play') : ''; e.style.display = on ? 'block' : 'none'; }
+
+  function showOsd(keep) {
+    osd.classList.add('on');
+    clearTimeout(osdTimer);
+    if (!keep && !paused) osdTimer = setTimeout(function () { osd.classList.remove('on'); }, 4500);
+  }
+  function setState() { $('#osdState').textContent = paused ? '\u275A\u275A ' + t('paused') : ''; }
+
+  function progress(pos) {
+    if (!ctx || ctx.kind === 'live') return;
+    var d = dur || 0;
+    $('#osdFill').style.width = d ? Math.min(100, pos / d * 100) + '%' : '0';
+    $('#osdTime').textContent = fmtTime(pos) + ' / ' + fmtTime(d);
+  }
+
+  /* ---------- backends ---------- */
+  function stopBackend() {
+    if (IS_TIZEN) {
+      try { webapis.avplay.stop(); } catch (e) {}
+      try { webapis.avplay.close(); } catch (e) {}
+    } else {
+      try { vid.pause(); vid.removeAttribute('src'); vid.load(); } catch (e) {}
+    }
+  }
+
+  function openUrl(url) {
+    failed = false; paused = false; dur = 0;
+    showErr(false); buffer(true); setState(); progress(0);
+    if (IS_TIZEN) {
+      var av = webapis.avplay;
+      try { av.stop(); } catch (e) {}
+      try { av.close(); } catch (e) {}
+      try {
+        av.open(url);
+        av.setDisplayRect(0, 0, 1920, 1080);
+        try { av.setDisplayMethod('PLAYER_DISPLAY_MODE_LETTER_BOX'); } catch (e) {}
+        av.setListener({
+          onbufferingstart: function () { buffer(true); },
+          onbufferingcomplete: function () { buffer(false); },
+          oncurrentplaytime: function (ms) { buffer(false); progress(ms / 1000); },
+          onstreamcompleted: onEnded,
+          onerror: onError
+        });
+        av.prepareAsync(function () {
+          try { dur = av.getDuration() / 1000; } catch (e) {}
+          try { av.play(); } catch (e) { onError(e); }
+        }, onError);
+      } catch (e) { onError(e); }
+    } else {
+      vid.src = url;
+      var pr = vid.play();
+      if (pr && pr.catch) pr.catch(noop);
+    }
+  }
+
+  // HTML5 events (webOS)
+  vid.addEventListener('waiting', function () { buffer(true); });
+  vid.addEventListener('playing', function () { buffer(false); });
+  vid.addEventListener('canplay', function () { buffer(false); });
+  vid.addEventListener('loadedmetadata', function () { dur = isFinite(vid.duration) ? vid.duration : 0; });
+  vid.addEventListener('timeupdate', function () { if (!IS_TIZEN) progress(vid.currentTime); });
+  vid.addEventListener('ended', function () { if (!IS_TIZEN) onEnded(); });
+  vid.addEventListener('error', function () { if (!IS_TIZEN && vid.getAttribute('src')) onError(); });
+
+  function onError() {
+    if (!ctx || failed) return;
+    if (ctx.u + 1 < ctx.urls.length) { ctx.u++; openUrl(ctx.urls[ctx.u]); return; }   // m3u8 -> ts fallback
+    failed = true; buffer(false); showErr(true); showOsd(true);
+  }
+  function onEnded() {
+    if (!ctx) return;
+    if (ctx.kind === 'series' && ctx.idx + 1 < ctx.list.length) { ctx.idx++; loadCurrent(); return; }   // auto-next episode
+    if (ctx.kind === 'live') { loadCurrent(); return; }
+    exit();
+  }
+
+  /* ---------- flow ---------- */
+  function loadCurrent() {
+    var it = ctx.list[ctx.idx];
+    ctx.urls = urlsFor(ctx.kind, it); ctx.u = 0;
+    $('#osdTitle').textContent = it.n;
+    $('#osdEpg').textContent = '';
+    $('#osdBar').style.display = $('#osdTime').style.display = ctx.kind === 'live' ? 'none' : 'block';
+    showOsd();
+    openUrl(ctx.urls[0]);
+    if (ctx.kind === 'live') {
+      api({ action: 'get_short_epg', stream_id: it.id, limit: 2 }).then(function (d) {
+        if (!ctx || ctx.list[ctx.idx] !== it) return;
+        var l = (d && d.epg_listings) || [], s = '';
+        if (l[0]) s = t('now') + ': ' + b64(l[0].title);
+        if (l[1]) s += '     ' + t('next') + ': ' + b64(l[1].title);
+        $('#osdEpg').textContent = s;
+      }).catch(noop);
+    }
+  }
+
+  function start(kind, list, idx) {
+    ctx = { kind: kind, list: list, idx: idx, urls: [], u: 0 };
+    push('player');
+    loadCurrent();
+  }
+  function exit() {
+    stopBackend();
+    ctx = null; clearTimeout(osdTimer);
+    buffer(false); showErr(false); osd.classList.remove('on');
+    pop();
+  }
+  function zap(d) {
+    var n = ctx.list.length;
+    ctx.idx = (ctx.idx + d + n) % n;
+    loadCurrent();
+  }
+  function togglePause() {
+    try {
+      if (IS_TIZEN) {
+        var st = webapis.avplay.getState();
+        if (st === 'PLAYING') { webapis.avplay.pause(); paused = true; }
+        else { webapis.avplay.play(); paused = false; }
+      } else {
+        if (vid.paused) { vid.play(); paused = false; } else { vid.pause(); paused = true; }
+      }
+    } catch (e) {}
+    setState(); showOsd();
+  }
+  function seek(sec) {
+    if (!ctx || ctx.kind === 'live') { showOsd(); return; }
+    try {
+      if (IS_TIZEN) { if (sec > 0) webapis.avplay.jumpForward(sec * 1000); else webapis.avplay.jumpBackward(-sec * 1000); }
+      else vid.currentTime = Math.max(0, Math.min(vid.duration || 1e9, vid.currentTime + sec));
+    } catch (e) {}
+    showOsd();
+  }
+
+  function key(k, e) {
+    if (!ctx) return;
+    var live = ctx.kind === 'live', used = true;
+    if (failed) {                                   // error state: OK retries, Back leaves
+      if (k === K.ENTER) { e.preventDefault(); loadCurrent(); return; }
+    }
+    switch (k) {
+      case K.ENTER:     live ? showOsd() : togglePause(); break;
+      case K.PLAY: case K.PAUSE: case K.PLAYPAUSE: togglePause(); break;
+      case K.STOP:      exit(); break;
+      case K.UP:        live ? zap(1)  : showOsd(); break;   // channel +
+      case K.DOWN:      live ? zap(-1) : showOsd(); break;   // channel -
+      case K.CH_UP_TIZEN: case K.CH_UP_WEBOS: if (live) zap(1); break;
+      case K.CH_DN_TIZEN: case K.CH_DN_WEBOS: if (live) zap(-1); break;
+      case K.LEFT:      seek(-SEEK_STEP); break;
+      case K.RIGHT:     seek(SEEK_STEP); break;
+      case K.RW:        seek(-30); break;
+      case K.FF:        seek(30); break;
+      case K.BACK_WEBOS: case K.BACK_TIZEN: case K.ESC: case K.BACKSPACE: exit(); break;
+      default: used = false;
+    }
+    if (used) e.preventDefault();
+  }
+
+  document.addEventListener('visibilitychange', function () {
+    if (cur !== 'player' || !ctx) return;
+    try {
+      if (document.hidden) { if (IS_TIZEN) webapis.avplay.suspend(); else vid.pause(); }
+      else { if (IS_TIZEN) webapis.avplay.restore(); else vid.play(); }
+    } catch (e) { if (!document.hidden) loadCurrent(); }
+  });
+
+  return { start: start, exit: exit, key: key };
+})();
+
+/* =====================================================================
+   Click wiring (Enter on a focused element calls .click())
+   ===================================================================== */
+$('#btnLogin').addEventListener('click', doLogin);
+$('#btnLang').addEventListener('click', function () {
+  lang = lang === 'ar' ? 'en' : 'ar';
+  lsSet('iptv.lang', lang);
+  applyLang();
+});
+$('#btnLogout').addEventListener('click', logout);
+$('#btnReload').addEventListener('click', function () { DB.clear().then(function () { toast(t('reloaded')); }); });
+$('#tiles').addEventListener('click', function (e) {
+  var tile = closest(e.target, 'tile');
+  if (tile) openBrowse(tile.getAttribute('data-go'));
+});
+$('#cats').addEventListener('click', function (e) {
+  var c = closest(e.target, 'cat');
+  if (!c) return;
+  B.catId = c.getAttribute('data-id');
+  $$('#cats .cat').forEach(function (x) { x.classList.toggle('sel', x === c); });
+  renderGrid();
+  focusEl($('#grid .f') || c);
+});
+$('#grid').addEventListener('click', function (e) {
+  var c = closest(e.target, 'card') || closest(e.target, 'row');
+  if (!c) return;
+  var it = B.view[+c.getAttribute('data-idx')];
+  if (!it) return;
+  var i = +c.getAttribute('data-idx');
+  if (B.mode === 'live') Player.start('live', B.view, i);
+  else openDetail(B.mode, it);
+});
+var searchTimer = null;
+$('#inSearch').addEventListener('input', function () {
+  var v = this.value;
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(function () { B.q = v.trim(); renderGrid(); }, 400);
+});
+$('#dPlay').addEventListener('click', function () { Player.start('vod', [D.item], 0); });
+$('#dSeasons').addEventListener('click', function (e) {
+  var b = closest(e.target, 'btn');
+  if (b) { renderEpisodes(b.getAttribute('data-season')); }
+});
+$('#dEps').addEventListener('click', function (e) {
+  var r = closest(e.target, 'row');
+  if (!r) return;
+  var eps = D.info.seasons[D.season].map(function (x) { return { id: x.id, n: x.n, x: x.x }; });
+  Player.start('series', eps, +r.getAttribute('data-ep'));
+});
+
+/* =====================================================================
+   Boot
+   ===================================================================== */
+applyLang();
+(function boot() {
+  var a = null;
+  try { a = JSON.parse(lsGet('iptv.account')); } catch (e) {}
+  if (a) {
+    $('#inName').value = a.name || ''; $('#inUser').value = a.user || '';
+    $('#inPass').value = a.pass || ''; $('#inHost').value = a.host || '';
+  }
+  stack = ['login']; cur = null;
+  show('login');
+  if (a && a.auto && a.user && a.pass && a.host) doLogin();
+})();
+
+})();
+</script>
+</body>
+</html>
